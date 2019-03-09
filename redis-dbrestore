@@ -1,0 +1,169 @@
+#!/bin/bash
+#
+# 实现redis源实例dbX迁移至目标实例dbY.
+#
+# Update: 20190222
+
+
+SRC_HOST=
+SRC_PORT=
+SRC_PASS=
+SRC_DB=
+SRC_KEYS=
+
+DST_HOST=
+DST_PORT=
+DST_PASS=
+DST_DB=
+
+
+# --------
+#  functions
+# --------
+
+logger_debug() {
+    #echo "[ $(date '+%F %T') ERROR] $*"
+    echo -en "\E[36;1m""[$(date '+%F %T') debug] ";tput sgr0;echo $*
+}
+logger_error() {
+    #echo "[ $(date '+%F %T') ERROR] $*"
+    echo -en "\E[31;1m""[$(date '+%F %T') ERROR] ";tput sgr0;echo $*
+}
+logger_warning() {
+    #echo "[ $(date '+%F %T') ERROR] $*"
+    echo -en "\E[33;1m""[$(date '+%F %T') warning] ";tput sgr0;echo $*
+}
+logger_info() {
+    #echo "[ $(date '+%F %T') ERROR] $*"
+    echo -en "\E[36;1m""[$(date '+%F %T') info] ";tput sgr0;echo $*
+}
+
+
+yes_or_no() {
+    #echo "Is your name $* ?"
+    logger_warning "$* ?"
+    while true
+    do
+        echo -n "Enter yes or no: "
+        read x
+        case "$x" in
+            y | yes ) return 0;;
+            n | no ) return 1;;
+            * ) logger_warning "Answer yes or no";;
+        esac
+    done
+}
+
+help() {
+    echo "Usage: $0 [OPTIONS...]"
+    echo ""
+    echo "  OPTION:"
+    echo "    --help, -h          help msg."
+    echo "    --src-host HOST     default: 127.0.0.1"
+    echo "    --src-port PORT     default: 6379"
+    echo "    --src-auth PASS"
+    echo "    --src-db DB         default: 0"
+    echo "    --src-keys KEYS"
+    echo ""
+    echo "    --dst-host HOST     default: 127.0.0.1"
+    echo "    --dst-port PORT     default: 6379"
+    echo "    --dst-auth PASS"
+    echo "    --dst-db DB         default: 0"
+}
+
+# --------
+#  main
+# --------
+[ $# -eq 0 ] && help && exit 1
+
+while [ -n "$*" ] ; do
+    arg=$1
+    shift
+    case "$arg" in
+    --help|-h)
+        help
+        exit 0
+        ;;
+    --src-host)
+        arg=$1
+        shift
+        SRC_HOST=$arg
+        ;;
+    --src-port)
+        arg=$1
+        shift
+        SRC_PORT=$arg
+        ;;
+    --src-auth|--src-pass)
+        arg=$1
+        shift
+        SRC_PASS=$arg
+        ;;
+    --src-db)
+        arg=$1
+        shift
+        SRC_DB=$arg
+        ;;
+    --src-keys)
+        arg=$1
+        shift
+        SRC_KEYS=$arg
+        ;;
+    --dst-host)
+        arg=$1
+        shift
+        DST_HOST=$arg
+        ;;
+    --dst-port)
+        arg=$1
+        shift
+        DST_PORT=$arg
+        ;;
+    --dst-pass|--dst-auth)
+        arg=$1
+        shift
+        DST_PASS=$arg
+        ;;
+    --dst-db)
+        arg=$1
+        shift
+        DST_DB=$arg
+        ;;
+    *)
+        echo "Unknown arg: $arg"
+        exit 1
+        ;;
+    esac
+done
+
+redis-cli --version 2>/dev/null
+[ $? -ne 0 ] && logger_warning "redis-cli 命令不可用。" && exit 1
+
+
+SRC_HOST=${SRC_HOST:-'127.0.0.1'}
+SRC_PORT=${SRC_PORT:-'6379'}
+if [[ ${SRC_PASS} != '' ]];then
+    SRC_PASS_OPTION="-a ${SRC_PASS}"
+fi
+SRC_DB=${SRC_DB:-'0'}
+SRC_KEYS=${SRC_KEYS:-'*'}
+
+DST_HOST=${DST_HOST:-'127.0.0.1'}
+DST_PORT=${DST_PORT:-'6379'}
+if [[ ${DST_PASS} != '' ]];then
+    DST_PASS_OPTION="-a ${DST_PASS}"
+fi
+DST_DB=${DST_DB:-'0'}
+
+
+[[ ${SRC_HOST} == ${DST_HOST} ]] && [[ ${SRC_DB} == ${DST_DB} ]] && logger_error '源和目标一样，不能操作!' && exit 1
+
+logger_info "将redis ${SRC_HOST}:${SRC_PORT} DB-${SRC_DB} keys(${SRC_KEYS}) 数据迁移至redis ${DST_HOST}:${DST_PORT} DB-${DST_DB}"
+yes_or_no "是否执行"
+
+redis-cli -h ${SRC_HOST?unknown} -p ${SRC_PORT?unknown} ${SRC_PASS_OPTION} -n ${SRC_DB?unknown} keys "${SRC_KEYS?unknown}" | while read key
+do
+    redis-cli -h ${SRC_HOST?unknown} -p ${SRC_PORT?unknown} ${SRC_PASS_OPTION} -n ${SRC_DB?unknown} --raw dump $key | perl -pe 'chomp if eof' | redis-cli -h ${DST_HOST?unknown} -p ${DST_PORT?unknown} ${DST_PASS_OPTION} -n ${DST_DB?unknown} -x restore $key 0
+    logger_info "migrate key $key"
+done
+
