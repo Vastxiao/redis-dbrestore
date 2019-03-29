@@ -12,6 +12,27 @@ chmod +x /usr/local/bin/redis-dbrestore
 
 ## redis-dbrestore 工具使用
 
+**帮助信息:**
+
+```
+Usage: redis-dbrestore [OPTIONS...]
+
+  OPTION:
+    --help, -h          help msg.
+    --src-host HOST     default: 127.0.0.1
+    --src-port PORT     default: 6379
+    --src-auth PASS
+    --src-db DB         default: 0
+    --src-keys KEYS
+
+    --dst-host HOST     default: 127.0.0.1
+    --dst-port PORT     default: 6379
+    --dst-auth PASS
+    --dst-db DB         default: 0
+```
+
+**用法实例:**
+
 ```bash
 # 查看命令帮助:
 redis-dbrestore -h
